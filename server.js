@@ -4,13 +4,14 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const TIENE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// ---------------------------------------------------------------------------
-// Estado inicial de prueba en memoria (se reemplaza por DB + ML en el paso 2)
-// ---------------------------------------------------------------------------
-const ENVIO_INICIAL = [
+const DATOS_PRUEBA_INICIALES = [
   {
     shipment_id: '4500192831',
     order_id: '2000089123456789',
@@ -20,8 +21,7 @@ const ENVIO_INICIAL = [
     motivo: 'Comprador ausente',
     fecha_reprogramada: null,
     franja_horaria: null,
-    aviso_enviado: false,
-    actualizado_en: null
+    aviso_enviado: false
   },
   {
     shipment_id: '4500192832',
@@ -32,8 +32,7 @@ const ENVIO_INICIAL = [
     motivo: 'Domicilio cerrado',
     fecha_reprogramada: null,
     franja_horaria: null,
-    aviso_enviado: false,
-    actualizado_en: null
+    aviso_enviado: false
   },
   {
     shipment_id: '4500192833',
@@ -44,175 +43,283 @@ const ENVIO_INICIAL = [
     motivo: null,
     fecha_reprogramada: null,
     franja_horaria: null,
-    aviso_enviado: false,
-    actualizado_en: null
+    aviso_enviado: false
   }
 ];
 
-let enviosFlex = structuredClone(ENVIO_INICIAL);
-
-const FRANJAS_VALIDAS = new Set([
-  '09:00 a 12:00 hs',
-  '12:00 a 16:00 hs',
-  '16:00 a 20:00 hs'
-]);
+let enviosMemoria = JSON.parse(JSON.stringify(DATOS_PRUEBA_INICIALES));
 
 function esFechaValida(fechaStr) {
   if (typeof fechaStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) {
     return false;
   }
-  const [y, m, d] = fechaStr.split('-').map(Number);
-  const fecha = new Date(Date.UTC(y, m - 1, d));
+  const [anio, mes, dia] = fechaStr.split('-').map(Number);
+  const fecha = new Date(Date.UTC(anio, mes - 1, dia));
   return (
-    fecha.getUTCFullYear() === y &&
-    fecha.getUTCMonth() === m - 1 &&
-    fecha.getUTCDate() === d
+    fecha.getUTCFullYear() === anio &&
+    fecha.getUTCMonth() === mes - 1 &&
+    fecha.getUTCDate() === dia
   );
 }
 
-// ---------------------------------------------------------------------------
-// Ruta principal del panel
-// ---------------------------------------------------------------------------
-app.get('/', (req, res) => {
+async function supabaseFetch(endpoint, options = {}) {
+  if (!TIENE_SUPABASE) {
+    throw new Error('Variables de Supabase no configuradas');
+  }
+
+  const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
+  const headers = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  const resp = await fetch(url, {
+    ...options,
+    headers
+  });
+
+  const texto = await resp.text();
+  let data = null;
+  if (texto) {
+    try {
+      data = JSON.parse(texto);
+    } catch {
+      data = texto;
+    }
+  }
+
+  if (!resp.ok) {
+    const detalle =
+      (data && (data.message || data.error_description || data.hint)) ||
+      `HTTP ${resp.status}`;
+    throw new Error(`Supabase error: ${detalle}`);
+  }
+
+  return data;
+}
+
+async function obtenerEnviosDB() {
+  if (!TIENE_SUPABASE) {
+    return { envios: enviosMemoria, fuente: 'memoria' };
+  }
+
+  const filas = await supabaseFetch(
+    'envios_flex?select=*&order=shipment_id.asc',
+    { method: 'GET' }
+  );
+
+  return {
+    envios: Array.isArray(filas) ? filas : [],
+    fuente: 'supabase'
+  };
+}
+
+async function verificarConexionSupabase() {
+  if (!TIENE_SUPABASE) {
+    return { conectada: false, detalle: 'Faltan variables de entorno' };
+  }
+  try {
+    await supabaseFetch('envios_flex?select=shipment_id&limit=1', {
+      method: 'GET'
+    });
+    return { conectada: true, detalle: 'Conectada a PostgreSQL (Supabase)' };
+  } catch (err) {
+    return { conectada: false, detalle: err.message };
+  }
+}
+
+async function verificarCuentaML() {
+  if (!TIENE_SUPABASE) {
+    return { vinculada: false, ml_user_id: null };
+  }
+  try {
+    const filas = await supabaseFetch(
+      "ml_cuentas?id=eq.proveedor_principal&select=ml_user_id,access_token,expires_at&limit=1",
+      { method: 'GET' }
+    );
+    const cuenta = Array.isArray(filas) && filas[0] ? filas[0] : null;
+    const vinculada = Boolean(cuenta && cuenta.access_token);
+    return {
+      vinculada,
+      ml_user_id: cuenta ? cuenta.ml_user_id : null
+    };
+  } catch {
+    return { vinculada: false, ml_user_id: null };
+  }
+}
+
+app.get('/api/estado', async (_req, res) => {
+  const [db, ml] = await Promise.all([
+    verificarConexionSupabase(),
+    verificarCuentaML()
+  ]);
+
+  res.json({
+    ok: true,
+    modo: ml.vinculada ? 'produccion' : 'prueba',
+    base_datos: db.conectada ? 'conectada' : 'pendiente',
+    base_datos_detalle: db.detalle,
+    mercado_libre: ml.vinculada ? 'vinculada' : 'pendiente',
+    ml_user_id: ml.ml_user_id
+  });
+});
+
+app.get('/api/envios', async (_req, res) => {
+  try {
+    const resultado = await obtenerEnviosDB();
+    res.json({
+      ok: true,
+      fuente: resultado.fuente,
+      envios: resultado.envios
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: `No se pudieron cargar los envíos: ${err.message}`,
+      envios: enviosMemoria
+    });
+  }
+});
+
+async function manejarReprogramacion(req, res) {
+  const shipmentId = String(
+    req.params.shipment_id || req.body.shipment_id || ''
+  ).trim();
+  const fechaReprogramada = String(req.body.fecha_reprogramada || '').trim();
+  const franjaHoraria = String(
+    req.body.franja_horaria || '09:00 a 12:00 hs'
+  ).trim();
+
+  if (!shipmentId) {
+    return res.status(400).json({ ok: false, error: 'Falta el ID de envío.' });
+  }
+
+  if (!esFechaValida(fechaReprogramada)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: 'Seleccioná una fecha válida.' });
+  }
+
+  const ahoraIso = new Date().toISOString();
+
+  if (TIENE_SUPABASE) {
+    try {
+      const actualizados = await supabaseFetch(
+        `envios_flex?shipment_id=eq.${encodeURIComponent(shipmentId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Prefer: 'return=representation'
+          },
+          body: JSON.stringify({
+            estado: 'rescheduled',
+            fecha_reprogramada: fechaReprogramada,
+            franja_horaria: franjaHoraria,
+            aviso_enviado: true,
+            actualizado_en: ahoraIso
+          })
+        }
+      );
+
+      if (!Array.isArray(actualizados) || actualizados.length === 0) {
+        return res
+          .status(404)
+          .json({ ok: false, error: 'Envío no encontrado en la base de datos.' });
+      }
+
+      const envio = actualizados[0];
+      return res.json({
+        ok: true,
+        fuente: 'supabase',
+        mensaje: `Envío #${envio.shipment_id} reprogramado para el ${fechaReprogramada} (${franjaHoraria}) y aviso preparado para ${envio.comprador}.`,
+        envio
+      });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: `Error guardando en Supabase: ${err.message}`
+      });
+    }
+  }
+
+  const idx = enviosMemoria.findIndex((e) => e.shipment_id === shipmentId);
+  if (idx === -1) {
+    return res.status(404).json({ ok: false, error: 'Envío no encontrado.' });
+  }
+
+  enviosMemoria[idx] = {
+    ...enviosMemoria[idx],
+    estado: 'rescheduled',
+    fecha_reprogramada: fechaReprogramada,
+    franja_horaria: franjaHoraria,
+    aviso_enviado: true,
+    actualizado_en: ahoraIso
+  };
+
+  const envio = enviosMemoria[idx];
+  return res.json({
+    ok: true,
+    fuente: 'memoria',
+    mensaje: `Envío #${envio.shipment_id} reprogramado para el ${fechaReprogramada} (${franjaHoraria}) y aviso preparado para ${envio.comprador}.`,
+    envio
+  });
+}
+
+app.post('/api/reprogramar', manejarReprogramacion);
+app.post('/api/envios/:shipment_id/reprogramar', manejarReprogramacion);
+
+app.post('/api/restaurar', async (_req, res) => {
+  enviosMemoria = JSON.parse(JSON.stringify(DATOS_PRUEBA_INICIALES));
+
+  if (TIENE_SUPABASE) {
+    try {
+      const ahoraIso = new Date().toISOString();
+      const filasReset = DATOS_PRUEBA_INICIALES.map((item) => ({
+        ...item,
+        actualizado_en: ahoraIso
+      }));
+
+      await supabaseFetch('envios_flex?on_conflict=shipment_id', {
+        method: 'POST',
+        headers: {
+          Prefer: 'resolution=merge-duplicates,return=representation'
+        },
+        body: JSON.stringify(filasReset)
+      });
+
+      const resultado = await obtenerEnviosDB();
+      return res.json({
+        ok: true,
+        fuente: 'supabase',
+        mensaje: 'Datos de prueba restaurados en Supabase.',
+        envios: resultado.envios
+      });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: `No se pudieron restaurar los datos en Supabase: ${err.message}`
+      });
+    }
+  }
+
+  return res.json({
+    ok: true,
+    fuente: 'memoria',
+    mensaje: 'Datos de prueba restaurados en memoria.',
+    envios: enviosMemoria
+  });
+});
+
+app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// ---------------------------------------------------------------------------
-// Estado de integración (Mercado Libre + Base de Datos)
-// ---------------------------------------------------------------------------
-app.get('/api/estado-conexion', (req, res) => {
-  const mlConfigurado = Boolean(process.env.ML_CLIENT_ID && process.env.ML_CLIENT_SECRET);
-  const dbConfigurada = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-  res.json({
-    modo: mlConfigurado && dbConfigurada ? 'produccion' : 'prueba_local',
-    mercado_libre_configurado: mlConfigurado,
-    base_datos_configurada: dbConfigurada,
-    redirect_uri_sugerida:
-      process.env.ML_REDIRECT_URI ||
-      'https://flex-reprogramador3.onrender.com/auth/ml/callback'
-  });
-});
-
-// Base lista para iniciar OAuth con Mercado Libre cuando cargues las variables
-app.get('/auth/ml/url', (req, res) => {
-  const clientId = process.env.ML_CLIENT_ID;
-  const redirectUri =
-    process.env.ML_REDIRECT_URI ||
-    'https://flex-reprogramador3.onrender.com/auth/ml/callback';
-
-  if (!clientId) {
-    return res.status(400).json({
-      ok: false,
-      error: 'Falta configurar ML_CLIENT_ID en las variables de entorno de Render.'
-    });
-  }
-
-  const authUrl = new URL('https://auth.mercadolibre.com.ar/authorization');
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('client_id', clientId);
-  authUrl.searchParams.set('redirect_uri', redirectUri);
-
-  res.json({ ok: true, auth_url: authUrl.toString() });
-});
-
-app.get('/auth/ml/callback', (req, res) => {
-  const { code, error } = req.query;
-  if (error) {
-    return res.status(400).send(`Error de autorización en Mercado Libre: ${error}`);
-  }
-  if (!code) {
-    return res.status(400).send('No se recibió el código de autorización (code).');
-  }
-  res.send(
-    'Código OAuth recibido correctamente. En el próximo paso lo intercambiamos por tokens y guardamos en la base de datos.'
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Endpoints de envíos Flex
-// ---------------------------------------------------------------------------
-app.get('/api/envios', (req, res) => {
-  try {
-    const { estado = 'todos', q = '' } = req.query;
-    const termino = String(q).trim().toLowerCase();
-
-    const filtrados = enviosFlex.filter((envio) => {
-      const coincideEstado = estado === 'todos' || envio.estado === estado;
-      const coincideTexto =
-        !termino ||
-        envio.shipment_id.toLowerCase().includes(termino) ||
-        envio.order_id.toLowerCase().includes(termino) ||
-        envio.comprador.toLowerCase().includes(termino) ||
-        envio.direccion.toLowerCase().includes(termino);
-
-      return coincideEstado && coincideTexto;
-    });
-
-    res.json({
-      ok: true,
-      total: enviosFlex.length,
-      envios: filtrados
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: 'Error al obtener los envíos.' });
-  }
-});
-
-app.post('/api/envios/:shipmentId/reprogramar', (req, res) => {
-  try {
-    const { shipmentId } = req.params;
-    const { fecha_reprogramada, franja_horaria } = req.body || {};
-
-    if (!esFechaValida(fecha_reprogramada)) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Seleccioná una fecha válida.'
-      });
-    }
-
-    const franjaElegida = FRANJAS_VALIDAS.has(franja_horaria)
-      ? franja_horaria
-      : '12:00 a 16:00 hs';
-
-    const idx = enviosFlex.findIndex((item) => item.shipment_id === shipmentId);
-    if (idx === -1) {
-      return res.status(404).json({
-        ok: false,
-        error: `No se encontró el envío #${shipmentId}.`
-      });
-    }
-
-    enviosFlex[idx] = {
-      ...enviosFlex[idx],
-      estado: 'rescheduled',
-      fecha_reprogramada,
-      franja_horaria: franjaElegida,
-      aviso_enviado: true,
-      actualizado_en: new Date().toISOString()
-    };
-
-    const actualizado = enviosFlex[idx];
-
-    res.json({
-      ok: true,
-      mensaje: `Envío #${actualizado.shipment_id} reprogramado para el ${actualizado.fecha_reprogramada} (${actualizado.franja_horaria}) y aviso preparado para ${actualizado.comprador}.`,
-      envio: actualizado
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: 'No se pudo reprogramar el envío.' });
-  }
-});
-
-app.post('/api/envios/reset-prueba', (req, res) => {
-  enviosFlex = structuredClone(ENVIO_INICIAL);
-  res.json({
-    ok: true,
-    mensaje: 'Datos de prueba restaurados a su estado inicial.',
-    envios: enviosFlex
-  });
-});
-
 app.listen(PORT, () => {
-  console.log(`Panel Flex escuchando en el puerto ${PORT}`);
+  console.log(
+    `Servidor Flex Reprogramador activo en puerto ${PORT} | Supabase: ${
+      TIENE_SUPABASE ? 'CONFIGURADO' : 'NO CONFIGURADO'
+    }`
+  );
 });
