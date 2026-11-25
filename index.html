@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlexRepro - Gestión y Reprogramación Flex</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6f8; color: #222; margin: 0; padding: 20px; }
+        .container { max-width: 960px; margin: 0 auto; }
+        header { background: #ffe600; padding: 18px 24px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        h1 { margin: 0; font-size: 1.4rem; color: #2d3277; }
+        .badge-modo { background: #2d3277; color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; }
+        .card { background: #fff; border-radius: 10px; padding: 18px; margin-top: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); border-left: 5px solid #ccc; }
+        .card.not_delivered { border-left-color: #e53935; }
+        .card.ready_to_ship { border-left-color: #1e88e5; }
+        .card.rescheduled { border-left-color: #43a047; }
+        .top-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .estado { font-weight: bold; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; }
+        .not_delivered .estado { background: #ffebee; color: #c62828; }
+        .ready_to_ship .estado { background: #e3f2fd; color: #1565c0; }
+        .rescheduled .estado { background: #e8f5e9; color: #2e7d32; }
+        .form-repro { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        input, select, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 0.9rem; }
+        button { background: #3483fa; color: #fff; border: none; cursor: pointer; font-weight: 600; }
+        button:hover { background: #2968c8; }
+        #alerta { display: none; background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; padding: 12px 16px; border-radius: 8px; margin-top: 16px; font-weight: 500; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📦 Panel Reprogramador Envíos Flex</h1>
+        <span class="badge-modo">Modo Prueba Local</span>
+    </header>
+
+    <div id="alerta"></div>
+    <div id="lista-envios">Cargando envíos...</div>
+</div>
+
+<script>
+    async function cargarEnvios() {
+        const res = await fetch('/api/envios-flex');
+        const data = await res.json();
+        const contenedor = document.getElementById('lista-envios');
+        contenedor.innerHTML = '';
+
+        const etiquetas = {
+            not_delivered: '⚠️ No entregado (Reprogramar)',
+            ready_to_ship: '🚚 Listo para enviar',
+            rescheduled: '✅ Reprogramado'
+        };
+
+        data.envios.forEach(envio => {
+            const card = document.createElement('div');
+            card.className = `card ${envio.estado}`;
+            card.innerHTML = `
+                <div class="top-row">
+                    <div>
+                        <strong>Envío #${envio.shipment_id}</strong> — Comprador: <b>${envio.comprador}</b><br>
+                        <small>📍 ${envio.direccion}</small>
+                        ${envio.motivo ? `<br><small style="color:#c62828;">Motivo: ${envio.motivo}</small>` : ''}
+                        ${envio.fecha_reprogramada ? `<br><small style="color:#2e7d32;">📅 Nueva entrega: <b>${envio.fecha_reprogramada}</b> (${envio.franja_horaria})</small>` : ''}
+                    </div>
+                    <span class="estado">${etiquetas[envio.estado] || envio.estado}</span>
+                </div>
+                <div class="form-repro">
+                    <input type="date" id="fecha-${envio.shipment_id}">
+                    <select id="franja-${envio.shipment_id}">
+                        <option value="12:00 a 16:00 hs">12:00 a 16:00 hs</option>
+                        <option value="16:00 a 21:00 hs">16:00 a 21:00 hs</option>
+                    </select>
+                    <button onclick="reprogramar('${envio.shipment_id}')">Reprogramar y Avisar</button>
+                </div>
+            `;
+            contenedor.appendChild(card);
+        });
+    }
+
+    async function reprogramar(shipmentId) {
+        const nuevaFecha = document.getElementById(`fecha-${shipmentId}`).value;
+        const franjaHoraria = document.getElementById(`franja-${shipmentId}`).value;
+
+        const res = await fetch('/api/reprogramar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shipmentId, nuevaFecha, franjaHoraria })
+        });
+
+        const data = await res.json();
+        const alerta = document.getElementById('alerta');
+        if (data.ok) {
+            alerta.style.display = 'block';
+            alerta.textContent = data.mensaje;
+            cargarEnvios();
+        } else {
+            alert(data.error);
+        }
+    }
+
+    cargarEnvios();
+</script>
+</body>
+</html>
