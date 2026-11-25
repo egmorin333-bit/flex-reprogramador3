@@ -3,9 +3,13 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Base de prueba en memoria (luego se conecta directo a Mercado Libre OAuth + Supabase)
 let enviosFlex = [
