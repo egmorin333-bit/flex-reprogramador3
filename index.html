@@ -1,103 +1,636 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlexRepro - Gestión y Reprogramación Flex</title>
-    <style>
-        body { font-family: system-ui, -apple-system, sans-serif; background: #f4f6f8; color: #222; margin: 0; padding: 20px; }
-        .container { max-width: 960px; margin: 0 auto; }
-        header { background: #ffe600; padding: 18px 24px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-        h1 { margin: 0; font-size: 1.4rem; color: #2d3277; }
-        .badge-modo { background: #2d3277; color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; }
-        .card { background: #fff; border-radius: 10px; padding: 18px; margin-top: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); border-left: 5px solid #ccc; }
-        .card.not_delivered { border-left-color: #e53935; }
-        .card.ready_to_ship { border-left-color: #1e88e5; }
-        .card.rescheduled { border-left-color: #43a047; }
-        .top-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-        .estado { font-weight: bold; padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; }
-        .not_delivered .estado { background: #ffebee; color: #c62828; }
-        .ready_to_ship .estado { background: #e3f2fd; color: #1565c0; }
-        .rescheduled .estado { background: #e8f5e9; color: #2e7d32; }
-        .form-repro { margin-top: 14px; padding-top: 14px; border-top: 1px solid #eee; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-        input, select, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 0.9rem; }
-        button { background: #3483fa; color: #fff; border: none; cursor: pointer; font-weight: 600; }
-        button:hover { background: #2968c8; }
-        #alerta { display: none; background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; padding: 12px 16px; border-radius: 8px; margin-top: 16px; font-weight: 500; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Reprogramador Envíos Flex</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --text: #18202c;
+      --muted: #5c6778;
+      --border: #dfe5ee;
+      --primary: #1d6ef2;
+      --primary-hover: #1558c7;
+      --accent-bg: #ffe81f;
+      --accent-text: #1b2232;
+      --danger-bg: #ffe9e9;
+      --danger-text: #b42318;
+      --danger-border: #e5484d;
+      --success-bg: #e8f8ee;
+      --success-text: #156d3b;
+      --success-border: #229954;
+      --info-bg: #eaf2ff;
+      --info-text: #174ea6;
+      --info-border: #3b82f6;
+      --shadow: 0 6px 20px rgba(24, 32, 44, 0.06);
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 16px 48px;
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: var(--accent-bg);
+      color: var(--accent-text);
+      padding: 18px 22px;
+      border-radius: var(--radius);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-mode {
+      background: #1d2951;
+      color: #ffffff;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .badge-mode.prod {
+      background: #156d3b;
+    }
+
+    .status-strip {
+      margin-top: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .status-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      background: #eef2f7;
+      color: #334155;
+    }
+
+    .pill.ok {
+      background: var(--success-bg);
+      color: var(--success-text);
+    }
+
+    .stats {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 2px 8px rgba(24, 32, 44, 0.03);
+    }
+
+    .stat-card .label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .stat-card .value {
+      margin-top: 4px;
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+
+    .toolbar {
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-btn {
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      color: var(--text);
+      padding: 7px 13px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .filter-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .search-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select {
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      padding: 8px 12px;
+      font-size: 0.92rem;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    input[type="text"] {
+      min-width: 210px;
+    }
+
+    .btn-secondary {
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 9px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover {
+      background: #f1f5f9;
+    }
+
+    .alert {
+      margin-top: 16px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-weight: 600;
+      display: none;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    .alert.success {
+      background: var(--success-bg);
+      color: var(--success-text);
+      border: 1px solid #a7f3d0;
+    }
+
+    .alert.error {
+      background: var(--danger-bg);
+      color: var(--danger-text);
+      border: 1px solid #fecaca;
+    }
+
+    .list {
+      margin-top: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+      border-left: 5px solid var(--info-border);
+    }
+
+    .card.not_delivered {
+      border-left-color: var(--danger-border);
+    }
+
+    .card.rescheduled {
+      border-left-color: var(--success-border);
+    }
+
+    .card-top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .shipment-title {
+      font-size: 1.08rem;
+      font-weight: 800;
+    }
+
+    .meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.93rem;
+    }
+
+    .reason {
+      margin-top: 6px;
+      color: var(--danger-text);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .schedule-info {
+      margin-top: 8px;
+      color: var(--success-text);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .status-badge {
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .status-badge.not_delivered {
+      background: var(--danger-bg);
+      color: var(--danger-text);
+    }
+
+    .status-badge.rescheduled {
+      background: var(--success-bg);
+      color: var(--success-text);
+    }
+
+    .status-badge.ready_to_ship {
+      background: var(--info-bg);
+      color: var(--info-text);
+    }
+
+    .controls {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #eef2f6;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 9px;
+      padding: 9px 16px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .empty {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+      box-shadow: var(--shadow);
+    }
+  </style>
 </head>
 <body>
-<div class="container">
-    <header>
-        <h1>📦 Panel Reprogramador Envíos Flex</h1>
-        <span class="badge-modo">Modo Prueba Local</span>
+  <div class="container">
+    <header class="header">
+      <h1>📦 Panel Reprogramador Envíos Flex</h1>
+      <span id="modoBadge" class="badge-mode">Modo Prueba Local</span>
     </header>
 
-    <div id="alerta"></div>
-    <div id="lista-envios">Cargando envíos...</div>
-</div>
+    <section class="status-strip">
+      <span id="conexionTexto">Verificando estado de integración...</span>
+      <div class="status-pills">
+        <span id="pillMl" class="pill">ML: Pendiente</span>
+        <span id="pillDb" class="pill">Base de datos: Pendiente</span>
+      </div>
+    </section>
 
-<script>
-    async function cargarEnvios() {
-        const res = await fetch('/api/envios-flex');
-        const data = await res.json();
-        const contenedor = document.getElementById('lista-envios');
-        contenedor.innerHTML = '';
+    <section class="stats">
+      <div class="stat-card">
+        <div class="label">Total de envíos</div>
+        <div id="statTotal" class="value">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">No entregados</div>
+        <div id="statNoEntregado" class="value">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Reprogramados</div>
+        <div id="statReprogramado" class="value">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Listos para enviar</div>
+        <div id="statListo" class="value">0</div>
+      </div>
+    </section>
 
-        const etiquetas = {
-            not_delivered: '⚠️ No entregado (Reprogramar)',
-            ready_to_ship: '🚚 Listo para enviar',
-            rescheduled: '✅ Reprogramado'
-        };
+    <section class="toolbar">
+      <div class="filters" id="filtroEstado">
+        <button class="filter-btn active" data-estado="todos">Todos</button>
+        <button class="filter-btn" data-estado="not_delivered">No entregados</button>
+        <button class="filter-btn" data-estado="rescheduled">Reprogramados</button>
+        <button class="filter-btn" data-estado="ready_to_ship">Listos para enviar</button>
+      </div>
 
-        data.envios.forEach(envio => {
-            const card = document.createElement('div');
-            card.className = `card ${envio.estado}`;
-            card.innerHTML = `
-                <div class="top-row">
-                    <div>
-                        <strong>Envío #${envio.shipment_id}</strong> — Comprador: <b>${envio.comprador}</b><br>
-                        <small>📍 ${envio.direccion}</small>
-                        ${envio.motivo ? `<br><small style="color:#c62828;">Motivo: ${envio.motivo}</small>` : ''}
-                        ${envio.fecha_reprogramada ? `<br><small style="color:#2e7d32;">📅 Nueva entrega: <b>${envio.fecha_reprogramada}</b> (${envio.franja_horaria})</small>` : ''}
-                    </div>
-                    <span class="estado">${etiquetas[envio.estado] || envio.estado}</span>
-                </div>
-                <div class="form-repro">
-                    <input type="date" id="fecha-${envio.shipment_id}">
-                    <select id="franja-${envio.shipment_id}">
-                        <option value="12:00 a 16:00 hs">12:00 a 16:00 hs</option>
-                        <option value="16:00 a 21:00 hs">16:00 a 21:00 hs</option>
-                    </select>
-                    <button onclick="reprogramar('${envio.shipment_id}')">Reprogramar y Avisar</button>
-                </div>
-            `;
-            contenedor.appendChild(card);
-        });
+      <div class="search-group">
+        <input id="buscador" type="text" placeholder="Buscar envío, comprador o calle..." />
+        <button id="btnReset" class="btn-secondary" type="button">Restaurar prueba</button>
+      </div>
+    </section>
+
+    <div id="alerta" class="alert" role="alert"></div>
+
+    <main id="listaEnvios" class="list">
+      <div class="empty">Cargando envíos...</div>
+    </main>
+  </div>
+
+  <script>
+    let filtroActual = 'todos';
+    let todosLosEnvios = [];
+
+    const alertaEl = document.getElementById('alerta');
+    const listaEl = document.getElementById('listaEnvios');
+    const buscadorEl = document.getElementById('buscador');
+
+    function mostrarAlerta(mensaje, tipo = 'success') {
+      alertaEl.textContent = mensaje;
+      alertaEl.className = `alert show ${tipo}`;
     }
 
-    async function reprogramar(shipmentId) {
-        const nuevaFecha = document.getElementById(`fecha-${shipmentId}`).value;
-        const franjaHoraria = document.getElementById(`franja-${shipmentId}`).value;
+    function ocultarAlerta() {
+      alertaEl.className = 'alert';
+      alertaEl.textContent = '';
+    }
 
-        const res = await fetch('/api/reprogramar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shipmentId, nuevaFecha, franjaHoraria })
-        });
+    function etiquetaEstado(estado) {
+      if (estado === 'not_delivered') return '⚠️ No entregado (Reprogramar)';
+      if (estado === 'rescheduled') return '✅ Reprogramado';
+      return '🚚 Listo para enviar';
+    }
 
+    function actualizarEstadisticas(lista) {
+      document.getElementById('statTotal').textContent = lista.length;
+      document.getElementById('statNoEntregado').textContent =
+        lista.filter((e) => e.estado === 'not_delivered').length;
+      document.getElementById('statReprogramado').textContent =
+        lista.filter((e) => e.estado === 'rescheduled').length;
+      document.getElementById('statListo').textContent =
+        lista.filter((e) => e.estado === 'ready_to_ship').length;
+    }
+
+    async function cargarEstadoConexion() {
+      try {
+        const res = await fetch('/api/estado-conexion');
         const data = await res.json();
-        const alerta = document.getElementById('alerta');
-        if (data.ok) {
-            alerta.style.display = 'block';
-            alerta.textContent = data.mensaje;
-            cargarEnvios();
+
+        const modoBadge = document.getElementById('modoBadge');
+        const pillMl = document.getElementById('pillMl');
+        const pillDb = document.getElementById('pillDb');
+        const conexionTexto = document.getElementById('conexionTexto');
+
+        if (data.modo === 'produccion') {
+          modoBadge.textContent = 'Conectado a ML + DB';
+          modoBadge.classList.add('prod');
+          conexionTexto.textContent = 'Integración activa con Mercado Libre y base de datos.';
         } else {
-            alert(data.error);
+          modoBadge.textContent = 'Modo Prueba Local';
+          modoBadge.classList.remove('prod');
+          conexionTexto.textContent =
+            'Trabajando con datos de prueba. Lista para vincular cuenta de Mercado Libre y base de datos.';
         }
+
+        pillMl.textContent = data.mercado_libre_configurado
+          ? 'ML: Configurado'
+          : 'ML: Pendiente de vincular';
+        pillMl.className = data.mercado_libre_configurado ? 'pill ok' : 'pill';
+
+        pillDb.textContent = data.base_datos_configurada
+          ? 'Base de datos: Conectada'
+          : 'Base de datos: Pendiente';
+        pillDb.className = data.base_datos_configurada ? 'pill ok' : 'pill';
+      } catch (_) {
+        // Sin bloqueo si falla el estado auxiliar
+      }
     }
 
+    function renderEnvios(envios) {
+      if (!envios.length) {
+        listaEl.innerHTML =
+          '<div class="empty">No hay envíos que coincidan con el filtro o búsqueda actual.</div>';
+        return;
+      }
+
+      listaEl.innerHTML = envios
+        .map((envio) => {
+          const fechaValor = envio.fecha_reprogramada || '';
+          const franjaValor = envio.franja_horaria || '12:00 a 16:00 hs';
+
+          return `
+            <article class="card ${envio.estado}">
+              <div class="card-top">
+                <div>
+                  <div class="shipment-title">
+                    Envío #${envio.shipment_id} — Comprador: <strong>${envio.comprador}</strong>
+                  </div>
+                  <div class="meta">📍 ${envio.direccion}</div>
+                  ${
+                    envio.motivo
+                      ? `<div class="reason">Motivo: ${envio.motivo}</div>`
+                      : ''
+                  }
+                  ${
+                    envio.fecha_reprogramada
+                      ? `<div class="schedule-info">🗓️ Nueva entrega: ${envio.fecha_reprogramada} (${envio.franja_horaria})</div>`
+                      : ''
+                  }
+                </div>
+                <span class="status-badge ${envio.estado}">
+                  ${etiquetaEstado(envio.estado)}
+                </span>
+              </div>
+
+              <div class="controls">
+                <input
+                  type="date"
+                  id="fecha-${envio.shipment_id}"
+                  value="${fechaValor}"
+                />
+                <select id="franja-${envio.shipment_id}">
+                  <option value="09:00 a 12:00 hs" ${franjaValor === '09:00 a 12:00 hs' ? 'selected' : ''}>09:00 a 12:00 hs</option>
+                  <option value="12:00 a 16:00 hs" ${franjaValor === '12:00 a 16:00 hs' ? 'selected' : ''}>12:00 a 16:00 hs</option>
+                  <option value="16:00 a 20:00 hs" ${franjaValor === '16:00 a 20:00 hs' ? 'selected' : ''}>16:00 a 20:00 hs</option>
+                </select>
+                <button
+                  class="btn-primary"
+                  type="button"
+                  onclick="reprogramarEnvio('${envio.shipment_id}', this)"
+                >
+                  Reprogramar y Avisar
+                </button>
+              </div>
+            </article>
+          `;
+        })
+        .join('');
+    }
+
+    async function cargarEnvios() {
+      try {
+        const params = new URLSearchParams({
+          estado: filtroActual,
+          q: buscadorEl.value.trim()
+        });
+
+        const [resFiltrados, resTodos] = await Promise.all([
+          fetch(`/api/envios?${params.toString()}`),
+          fetch('/api/envios')
+        ]);
+
+        const dataFiltrados = await resFiltrados.json();
+        const dataTodos = await resTodos.json();
+
+        todosLosEnvios = dataTodos.envios || [];
+        actualizarEstadisticas(todosLosEnvios);
+        renderEnvios(dataFiltrados.envios || []);
+      } catch (err) {
+        listaEl.innerHTML =
+          '<div class="empty">Error al cargar los envíos desde el servidor.</div>';
+      }
+    }
+
+    async function reprogramarEnvio(shipmentId, btnEl) {
+      ocultarAlerta();
+      const fechaInput = document.getElementById(`fecha-${shipmentId}`);
+      const franjaSelect = document.getElementById(`franja-${shipmentId}`);
+
+      const fechaReprogramada = fechaInput ? fechaInput.value : '';
+      const franjaHoraria = franjaSelect ? franjaSelect.value : '12:00 a 16:00 hs';
+
+      if (!fechaReprogramada) {
+        mostrarAlerta('Elegí primero una fecha para reprogramar el envío.', 'error');
+        return;
+      }
+
+      btnEl.disabled = true;
+      btnEl.textContent = 'Guardando...';
+
+      try {
+        const res = await fetch(`/api/envios/${shipmentId}/reprogramar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fecha_reprogramada: fechaReprogramada,
+            franja_horaria: franjaHoraria
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+          mostrarAlerta(data.error || 'No se pudo reprogramar el envío.', 'error');
+          return;
+        }
+
+        mostrarAlerta(data.mensaje, 'success');
+        await cargarEnvios();
+      } catch (_) {
+        mostrarAlerta('Error de conexión al intentar reprogramar.', 'error');
+      } finally {
+        btnEl.disabled = false;
+        btnEl.textContent = 'Reprogramar y Avisar';
+      }
+    }
+
+    document.querySelectorAll('.filter-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        filtroActual = btn.dataset.estado;
+        cargarEnvios();
+      });
+    });
+
+    buscadorEl.addEventListener('input', () => {
+      cargarEnvios();
+    });
+
+    document.getElementById('btnReset').addEventListener('click', async () => {
+      ocultarAlerta();
+      await fetch('/api/envios/reset-prueba', { method: 'POST' });
+      mostrarAlerta('Se restauraron los envíos de prueba iniciales.', 'success');
+      await cargarEnvios();
+    });
+
+    cargarEstadoConexion();
     cargarEnvios();
-</script>
+  </script>
 </body>
 </html>
