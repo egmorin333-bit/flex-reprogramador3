@@ -634,3 +634,26 @@
   </script>
 </body>
 </html>
+
+async function actualizarEstadoIntegracion() {
+  const badgeDb = document.getElementById('estado-db');
+  const textoEstado = document.getElementById('texto-estado-integracion');
+
+  try {
+    const resp = await fetch('/api/estado');
+    const data = await resp.json();
+
+    if (badgeDb) {
+      badgeDb.textContent = data.ok ? 'Base de datos: Conectada' : 'Base de datos: Error';
+    }
+    if (textoEstado && data.ok) {
+      textoEstado.textContent = 'Estado de integración verificado';
+    }
+  } catch (e) {
+    if (badgeDb) {
+      badgeDb.textContent = 'Base de datos: Error';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', actualizarEstadoIntegracion);
