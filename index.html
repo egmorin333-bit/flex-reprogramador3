@@ -635,9 +635,16 @@
 </body>
 </html>
 
+<script>
 async function actualizarEstadoIntegracion() {
-  const badgeDb = document.getElementById('estado-db');
-  const textoEstado = document.getElementById('texto-estado-integracion');
+  const badges = Array.from(document.querySelectorAll('span, div, button, p'));
+  const badgeDb =
+    document.getElementById('estado-db') ||
+    badges.find((el) => el.children.length === 0 && /base de datos:/i.test(el.textContent));
+
+  const textoEstado =
+    document.getElementById('texto-estado-integracion') ||
+    badges.find((el) => el.children.length === 0 && /verificando estado de integraci/i.test(el.textContent));
 
   try {
     const resp = await fetch('/api/estado');
@@ -654,6 +661,10 @@ async function actualizarEstadoIntegracion() {
       badgeDb.textContent = 'Base de datos: Error';
     }
   }
+}
+
+document.addEventListener('DOMContentLoaded', actualizarEstadoIntegracion);
+</script>
 }
 
 document.addEventListener('DOMContentLoaded', actualizarEstadoIntegracion);
