@@ -312,7 +312,49 @@ app.post('/api/restaurar', async (_req, res) => {
   });
 });
 
-app.get('*', (_req, res) => {
+app.post('/api/restaurar', async (_req, res) => {
+  enviosMemoria = JSON.parse(JSON.stringify(DATOS_PRUEBA_INICIALES));
+
+  if (TIENE_SUPABASE) {
+    try {
+      const ahoraIso = new Date().toISOString();
+      const filasReset = DATOS_PRUEBA_INICIALES.map((item) => ({
+        ...item,
+        actualizado_en: ahoraIso
+      }));
+
+      await supabaseFetch('envios_flex?on_conflict=shipment_id', {
+        method: 'POST',
+        headers: {
+          Prefer: 'resolution=merge-duplicates,return=representation'
+        },
+        body: JSON.stringify(filasReset)
+      });
+
+      const resultado = await obtenerEnviosDB();
+      return res.json({
+        ok: true,
+        fuente: 'supabase',
+        mensaje: 'Datos de prueba restaurados en Supabase.',
+        envios: resultado.envios
+      });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: `No se pudieron restaurar los datos en Supabase: ${err.message}`
+      });
+    }
+  }
+
+  return res.json({
+    ok: true,
+    fuente: 'memoria',
+    mensaje: 'Datos de prueba restaurados en memoria.',
+    envios: enviosMemoria
+  });
+});
+
+app.use((_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
