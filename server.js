@@ -365,3 +365,30 @@ app.listen(PORT, () => {
     }`
   );
 });
+
+app.get('/api/estado', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('envios_flex')
+      .select('id', { count: 'exact', head: true });
+
+    if (error) {
+      return res.status(500).json({
+        ok: false,
+        db: 'Error',
+        detalle: error.message
+      });
+    }
+
+    return res.json({
+      ok: true,
+      db: 'Conectada'
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      db: 'Error',
+      detalle: err.message
+    });
+  }
+});
